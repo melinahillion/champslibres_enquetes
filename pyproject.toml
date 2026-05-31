@@ -41,19 +41,18 @@ nlp = [
   "mlflow",                  # journalisation des paramètres et performances
 ]
 
-# --- Accélération GPU (OPTIONNELLE) -----------------------------------------
-# Uniquement si un service GPU est disponible. N'est PAS requis.
-gpu = [
-  "vllm",
-  "cuml-cu13",
-]
-
 # --- Interface graphique (Streamlit) ----------------------------------------
 ui = [
   "streamlit",
 ]
 
 dev = ["black", "ruff", "pytest"]
+
+# NB : le backend vLLM (modèles en local sur GPU) et le clustering cuML ne sont
+# PAS des extras de ce projet. vLLM impose des versions de torch très strictes,
+# souvent en retard sur les versions de Python, ce qui casse la résolution. Quand
+# ce backend optionnel sera implémenté, il sera installé dans un environnement
+# dédié, documenté séparément. Par défaut, tout tourne en CPU via llm.lab.
 
 # La commande en ligne `champslibres` sera réactivée quand on aura migré la CLI.
 # [project.scripts]

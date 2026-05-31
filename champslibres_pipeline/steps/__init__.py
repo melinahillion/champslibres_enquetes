@@ -10,5 +10,6 @@ architecture (config unifiée + couche LLM). Pour l'instant : étape 01.
 from . import step01_gec
 from . import step02_dedup
 from . import step03_embed
+from . import step04_cluster
 
-__all__ = ["step01_gec", "step02_dedup", "step03_embed"]
+__all__ = ["step01_gec", "step02_dedup", "step03_embed", "step04_cluster"]

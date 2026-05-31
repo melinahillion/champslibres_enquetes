@@ -59,14 +59,32 @@ Extras disponibles :
 | `uv sync` | cœur (CPU, léger) | toujours |
 | `uv sync --extra nlp` | BERTopic, UMAP, HDBSCAN, sentence-transformers, MLflow | étape 04 (et embedding HuggingFace optionnel) |
 | `uv sync --extra ui` | Streamlit | interface (à venir) |
-| `uv sync --extra gpu` | vllm, cuml | seulement si GPU disponible (non nécessaire) |
 
 > `--extra nlp` installe `torch` (dépendance de BERTopic) : c'est volumineux,
-> prévois quelques Go d'espace disque.
+> prévois quelques Go d'espace disque. Le GPU n'est **pas** nécessaire.
 
 ---
 
-## 4. Tests / utilisation
+## 4. « Tout est-il déjà dans .venv grâce à uv ? »
+
+En partie — et c'est pourquoi ces commandes restent documentées :
+
+- `uv.lock` (versionné) **fige les versions** exactes des paquets : reproductibilité garantie.
+- `.venv/` (l'environnement installé) **n'est pas versionné** (il est dans `.gitignore`).
+  Sur un nouveau service, ou pour un clone du dépôt, il n'existe pas : il faut le recréer.
+- `uv sync` **recrée `.venv`** à partir de `pyproject.toml` + `uv.lock`. Les extras
+  sont **optionnels** : `uv sync` seul n'installe **pas** `[nlp]` ; il faut `uv sync --extra nlp`.
+
+Raccourci : `uv run` synchronise le cœur automatiquement avant d'exécuter. Pour une
+commande qui a besoin de l'extra `nlp` sans `uv sync --extra nlp` préalable :
+
+```bash
+uv run --extra nlp python scripts/test_step04.py
+```
+
+---
+
+## 5. Tests / utilisation
 
 ```bash
 uv run python scripts/test_socle.py     # socle : config + connexion llm.lab + modèles dispo
@@ -83,7 +101,7 @@ Les sections « RÉEL » de ces tests (appels llm.lab) ne s'exécutent que si
 
 ---
 
-## 5. Avant de pousser sur GitHub
+## 6. Avant de pousser sur GitHub
 
 Le `.gitignore` exclut déjà `.venv/`, les caches, `mlruns/` et tout fichier de secrets.
 Avant le premier `git push`, vérifier l'absence de secrets en clair et ce que git suit :
@@ -93,11 +111,13 @@ grep -rInE "sk-[A-Za-z0-9]{8,}|hf_[A-Za-z0-9]{8,}|(password|secret|api_key|token
 git ls-files | grep -iE "\.env|secret|\.pem|\.key" || echo "aucun fichier sensible suivi"
 ```
 
-**Données** : `data/` pour les tests uniquement, jeu de données fictif.
+**Données** : `data/` peut contenir de vraies réponses d'enquête. Vérifier les règles
+de **secret statistique** avant publication (dépôt privé recommandé en cas de doute),
+ou remplacer par un jeu fictif.
 
 ---
 
-## 6. Structure du projet
+## 7. Structure du projet
 
 ```
 champslibres_enquetes/
