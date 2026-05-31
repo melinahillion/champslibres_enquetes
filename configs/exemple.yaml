@@ -1,0 +1,99 @@
+# ===========================================================================
+# Configuration d'un projet "champs libres" — fichier UNIQUE et lisible.
+# Tout le pipeline lit ce fichier. Les secrets (clés, mots de passe) ne sont
+# JAMAIS ici : on indique seulement le NOM de la variable d'environnement.
+# ===========================================================================
+
+project: exemple_champs_libres     # nom libre du projet
+bucket:  mon-bucket-sspcloud        # bucket S3 (MinIO du SSP Cloud)
+
+# --- Données d'entrée et noms de colonnes -----------------------------------
+io:
+  source_csv:     "s3://mon-bucket-sspcloud/data/exemple_input.csv"
+  question_json:  null     # (option) libellé de la question d'enquête
+  modalites_json: null     # (option) modalités déjà existantes (Rxx)
+
+columns:
+  id:    "SEQ_ID"          # identifiant unique  (présent dans tes données)
+  text:  "text_brut"       # le champ libre brut (présent dans tes données)
+  clean: "text_clean"      # créé par l'étape 01
+
+s3:
+  endpoint_env: "AWS_S3_ENDPOINT"   # variable fournie par le SSP Cloud
+
+# --- Couche LLM : un seul endroit pour TOUT ce qui touche aux modèles -------
+llm:
+  backend:        "llm_lab"                          # "llm_lab" (défaut) | "vllm" (GPU, option)
+  base_url:       "https://llm.lab.sspcloud.fr/api"
+  api_key_env:    "LLM_LAB_API_KEY"                  # NOM de la variable (pas la clé !)
+  default_model:  null        # null => l'utilisateur choisit dans la liste récupérée
+  max_concurrency: 8          # appels simultanés (plateforme mutualisée -> on reste raisonnable)
+  timeout_sec:    120
+
+# --- Étape 01 : correction du texte -----------------------------------------
+gec:
+  mode:        "light"    # "none" (aucune modif) | "light" (normalisation) | "llm" (correction LLM)
+  model:       null       # modèle llm.lab si mode = "llm"
+  temperature: 0.0
+  batch_size:  32
+  prompt_file: null       # ton prompt perso, sinon défaut du package
+
+# --- Étape 03 : embeddings (vecteurs de sens) -------------------------------
+embed:
+  backend:    "llm_lab"       # "llm_lab" (défaut) | "huggingface"
+  model_name: null            # null + llm_lab => 1er modèle d'embedding dispo sur llm.lab
+                              # sinon : nom d'un modèle llm.lab, ou id HuggingFace (ex. "BAAI/bge-m3")
+  batch_size: 32
+  normalize:  true            # vecteurs L2-normalisés (recommandé pour le clustering)
+  device:     "cpu"           # backend huggingface : "cpu" | "cuda"
+
+# --- Étape 04 : clustering via BERTopic (CPU) -------------------------------
+cluster:
+  umap:                       # réduction de dimension — réglages modifiables
+    n_neighbors:  15
+    n_components: 10
+    min_dist:     0.0
+    metric:       "cosine"
+    random_state: 42
+  hdbscan:                    # regroupement par densité — réglages modifiables
+    min_cluster_size: 20
+    min_samples:      10
+    metric:           "euclidean"
+  top_n_words:           10   # mots-clés par cluster (c-TF-IDF)
+  nr_representative_docs: 10   # exemples typiques gardés par cluster
+  language:              "french"
+  mlflow:
+    enabled:    true          # journaliser réglages + qualité du clustering
+    experiment: "champslibres-clustering"
+
+# --- Étape 05 : construction du label book ----------------------------------
+label:
+  mode:               "llm"   # "llm" (auto) | "human" (fourni par toi)
+  model:              null    # modèle llm.lab
+  temperature:        0.3
+  prompt_subs_file:    null   # prompts modifiables (sinon défauts)
+  prompt_supers_file:  null
+  prompt_mapping_file: null
+  human_label_book:    null   # si mode "human": chemin S3 d'un Label_book.json
+
+# --- Étape 06 : classification ----------------------------------------------
+classf:
+  mode:               "llm"   # "sans" (modalités existantes) | "llm" | "humain"
+  model:              null    # modèle llm.lab
+  n_iterations:       3       # nb de passages -> vote majoritaire  (PARAMÉTRABLE)
+  temperature:        0.0
+  enforce_json_schema: true   # vLLM garantit le format JSON
+  prompt_file:        null
+  label_book:         null    # sinon, le Label_book.json du projet
+
+# --- Étape 07 : évaluation (CPU pur) ----------------------------------------
+eval:
+  csv_path:     null          # CSV annoté par les humains
+  llm_csv_path: null          # (option) prédictions LLM séparées
+  weights:      "nominal"     # "nominal" | "linear" | "quadratic"
+  bootstrap_B:  2000
+
+# --- MLflow (suivi des expériences) -----------------------------------------
+mlflow:
+  enabled:           true
+  tracking_uri_env:  "MLFLOW_TRACKING_URI"   # fourni par le service MLflow du SSP Cloud

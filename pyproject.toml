@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "champslibres-pipeline"
+version = "0.3.0"
+description = "Pipeline complet pour le traitement des champs libres dans les enquêtes."
+readme = "README.md"
+requires-python = ">=3.12"
+
+authors = [
+  { name = "Mélina Hillion", email = "melina.hillion@insee.fr" }
+]
+
+# --- Coeur (léger, CPU, installable partout sur le SSP Cloud) ---------------
+# Suffisant pour : config, couche LLM (llm.lab), I/O S3, déduplication,
+# évaluation (étape 07). Aucune dépendance GPU.
+dependencies = [
+  "pandas",
+  "numpy",
+  "pyyaml",
+  "pydantic>=2",
+  "s3fs",
+  "tqdm",
+  "typer",
+  "openai",        # client de l'API compatible OpenAI (llm.lab)
+  "requests",
+]
+
+[project.optional-dependencies]
+# --- Traitement NLP en CPU : embeddings + clustering BERTopic + suivi MLflow -
+# Installer avec : uv sync --extra nlp
+nlp = [
+  "scikit-learn",
+  "sentence-transformers",   # embeddings en local (ex. BGE-m3) depuis HuggingFace
+  "bertopic",                # clustering (UMAP + HDBSCAN + c-TF-IDF) sur CPU
+  "umap-learn",
+  "hdbscan",
+  "spacy",
+  "mlflow",                  # journalisation des paramètres et performances
+]
+
+# --- Accélération GPU (OPTIONNELLE) -----------------------------------------
+# Uniquement si un service GPU est disponible. N'est PAS requis.
+gpu = [
+  "vllm",
+  "cuml-cu13",
+]
+
+# --- Interface graphique (Streamlit) ----------------------------------------
+ui = [
+  "streamlit",
+]
+
+dev = ["black", "ruff", "pytest"]
+
+# La commande en ligne `champslibres` sera réactivée quand on aura migré la CLI.
+# [project.scripts]
+# champslibres = "champslibres_pipeline.cli:main"
+
+# --- Découverte des packages ------------------------------------------------
+# On indique explicitement à setuptools quel dossier empaqueter, pour qu'il
+# ignore configs/ et scripts/ (sinon il ne sait pas lequel choisir).
+[tool.setuptools.packages.find]
+include = ["champslibres_pipeline*"]
