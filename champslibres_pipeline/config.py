@@ -103,8 +103,9 @@ class UMAPConfig(BaseModel):
 
 
 class HDBSCANConfig(BaseModel):
-    min_cluster_size: int = 20
-    min_samples: int = 10
+    # null -> auto : min_cluster_size = max(2, round(nb réponses uniques / 100))
+    min_cluster_size: Optional[int] = None
+    min_samples: Optional[int] = None   # null -> auto = min_cluster_size
     metric: str = "euclidean"
 
 
@@ -155,10 +156,18 @@ class ClassfConfig(BaseModel):
 
 
 class EvalConfig(BaseModel):
-    csv_path: Optional[str] = None
-    llm_csv_path: Optional[str] = None
-    weights: str = "nominal"          # "nominal" | "linear" | "quadratic"
+    # Jeu de données annoté : id, texte, + une colonne par annotateur humain.
+    annotated_csv: Optional[str] = None
+    id_column: Optional[str] = None        # défaut : columns.id
+    text_column: Optional[str] = None      # défaut : columns.text
+    # Noms des colonnes d'annotateurs humains (1..N), paramétrables.
+    # Les humains annotent directement en super-catégories (Rxx et/ou Fxx).
+    human_columns: List[str] = Field(default_factory=list)
+    # Modèles llm.lab à comparer (1..M). Chaque modèle classe en Cxx, puis on
+    # mappe vers Rxx/Fxx via le label book avant de comparer.
+    models: List[str] = Field(default_factory=list)
     bootstrap_B: int = 2000
+    random_state: int = 42
 
 
 class MLflowConfig(BaseModel):

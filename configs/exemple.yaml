@@ -9,7 +9,7 @@ bucket:  mon-bucket-sspcloud        # bucket S3 (MinIO du SSP Cloud)
 
 # --- Données d'entrée et noms de colonnes -----------------------------------
 io:
-  source_csv:     "s3://mon-bucket-sspcloud/data/exemple_input.csv"
+  source_csv:     "data/exemple_input.csv"   # chemin local (ou s3://... une fois le câblage S3 fait)
 
 # --- Contexte de l'enquête (sert à guider le LLM de l'étape 05) -------------
 survey:
@@ -63,8 +63,8 @@ cluster:
     metric:       "cosine"
     random_state: 42
   hdbscan:                    # regroupement par densité — réglages modifiables
-    min_cluster_size: 20
-    min_samples:      10
+    min_cluster_size: null    # null -> auto = round(nb réponses uniques / 100)
+    min_samples:      null    # null -> auto = min_cluster_size
     metric:           "euclidean"
   top_n_words:           10   # mots-clés par cluster (c-TF-IDF)
   nr_representative_docs: 10   # exemples typiques gardés par cluster
@@ -93,8 +93,8 @@ label:
 classf:
   mode:               "llm"   # "sans" (depuis le clustering) | "llm" | "humain"
   model:              null    # modèle llm.lab
-  n_iterations:       3       # nb de passages -> vote majoritaire
-  temperature:        0.3     # > 0 pour que le vote majoritaire apporte qqch
+  n_iterations:       1       # nb de passages -> vote majoritaire (1 = pas de vote)
+  temperature:        0       # > 0 (ex. 0.3) si n_iterations > 1, pour diversifier le vote
   batch_size:         20      # nb de réponses classées par appel LLM
   enforce_json_schema: true   # vLLM garantit le format JSON
   prompt_file:        null
@@ -103,10 +103,13 @@ classf:
 
 # --- Étape 07 : évaluation (CPU pur) ----------------------------------------
 eval:
-  csv_path:     null          # CSV annoté par les humains
-  llm_csv_path: null          # (option) prédictions LLM séparées
-  weights:      "nominal"     # "nominal" | "linear" | "quadratic"
-  bootstrap_B:  2000
+  annotated_csv: null               # CSV annoté : id, texte + 1 colonne par annotateur humain
+  id_column:     null               # défaut : columns.id (SEQ_ID)
+  text_column:   null               # défaut : columns.text (text_brut)
+  human_columns: ["humain1", "humain2"]   # noms des colonnes d'annotateurs (1..N), au choix
+  models:        ["gemma4-26b-moe", "qwen3-6-35b-moe"]      # modèles llm.lab à comparer, ex. ["gemma4-26b-moe", "qwen3-6-35b-moe"]
+  bootstrap_B:   2000
+  random_state:  42
 
 # --- MLflow (suivi des expériences) -----------------------------------------
 mlflow:

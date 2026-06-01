@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """
-Démonstration de bout en bout sur tes données (data/anon_NODCL_2425_T1_TEXT.csv ou autre).
+Démonstration de bout en bout sur tes données (data/exemple_input.csv ou autre).
 
     uv sync --extra nlp
     uv run python scripts/demo_pipeline.py
@@ -26,11 +26,10 @@ from champslibres_pipeline.config import load_config
 from champslibres_pipeline.steps.step01_gec import apply_gec
 from champslibres_pipeline.steps.step02_dedup import dedup
 from champslibres_pipeline.steps.step03_embed import embed_texts
-from champslibres_pipeline.steps.step04_cluster import cluster_embeddings
+from champslibres_pipeline.steps.step04_cluster import cluster_embeddings, log_to_mlflow
 from champslibres_pipeline.steps.step05_label import cluster_code, run_label_book
 from champslibres_pipeline.steps.step06_classify import run_classification
 
-SAMPLE = "data/anon_NODCL_2425_T1_TEXT.csv"
 OUTDIR = "output"
 
 
@@ -56,24 +55,29 @@ def main() -> int:
         print("[!] BERTopic non installé. Lance : uv sync --extra nlp")
         return 1
 
-    from champslibres_pipeline.llm import get_llm_client
+    from champslibres_pipeline.llm import get_llm_client, list_models
 
     os.makedirs(OUTDIR, exist_ok=True)
-    cfg = load_config("configs/exemple.yaml")
+    cfg = load_config("configs/exemple.yaml")          # <-- TOUTE la configuration vient d'ici
     client = get_llm_client(cfg.llm)
-    if not cfg.label.model:
-        cfg.label.model = "gemma4-26b-moe"
 
-    # >>> seuils à ADAPTER à la taille de l'échantillon <<<
-    cfg.cluster.umap.n_neighbors = 40
-    cfg.cluster.umap.n_components = 5
-    cfg.cluster.hdbscan.min_cluster_size = 80
-    cfg.cluster.hdbscan.min_samples = 20
+    # Modèles : on prend ceux de la config ; si absents, le 1er modèle de génération de llm.lab
+    if not cfg.label.model or not cfg.classf.model:
+        gen = list_models().get("generation", [])
+        if not cfg.label.model and gen:
+            cfg.label.model = gen[0]
+        if not cfg.classf.model:
+            cfg.classf.model = cfg.label.model
+
+    src = cfg.io.source_csv
+    if src.startswith("s3://"):
+        print(f"[!] io.source_csv pointe vers S3 ({src}) — non branché dans la démo. "
+              "Mets un chemin local pour l'instant.")
+        return 1
 
     print("1/6  Lecture + correction légère + déduplication...")
-    df = pd.read_csv(SAMPLE, dtype=str)
-    cfg.gec.mode = "light"
-    df = apply_gec(df, cfg)
+    df = pd.read_csv(src, dtype=str)                   # entrée = cfg.io.source_csv
+    df = apply_gec(df, cfg)                             # cfg.gec.mode
     dedup_df, _ = dedup(df, cfg)
     ids = dedup_df[cfg.columns.id].tolist()
     texts = dedup_df[cfg.columns.clean].tolist()
@@ -84,8 +88,11 @@ def main() -> int:
     print(f"     matrice {emb.shape}")
 
     print("3/6  Clustering BERTopic...")
-    res = cluster_embeddings(texts, emb, ids, cfg)
+    res = cluster_embeddings(texts, emb, ids, cfg)     # réglages UMAP/HDBSCAN (auto) depuis cfg
     print(f"     {res['n_clusters']} clusters, {res['n_noise']} 'bruit'")
+    run_id = log_to_mlflow(cfg, res, emb.shape[1])     # journalisation MLflow (si activée)
+    if run_id:
+        print(f"     run MLflow : {run_id}")
 
     print(f"4/6  Label book (regroupement Fxx = '{cfg.label.grouping.method}')...")
     dendro = f"{OUTDIR}/dendrogramme"

@@ -11,7 +11,7 @@ Trois capacités :
 """
 
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
 from .base import LLMClient, Message
@@ -104,6 +104,9 @@ class OpenAICompatibleClient(LLMClient):
         temperature: float = 0.0,
         max_tokens: int = 1024,
         json_schema: Optional[Dict[str, Any]] = None,
+        progress: bool = False,
+        progress_desc: str = "",
+        unit_weights: Optional[List[int]] = None,
     ) -> List[str]:
         results: List[str] = [""] * len(batch_messages)
 
@@ -118,11 +121,26 @@ class OpenAICompatibleClient(LLMClient):
             )
             return i, text
 
-        # Plusieurs appels réseau en parallèle, mais bornés par max_concurrency
-        # pour rester courtois avec une plateforme mutualisée.
+        bar = None
+        if progress:
+            try:
+                from tqdm.auto import tqdm
+                total = sum(unit_weights) if unit_weights else len(batch_messages)
+                bar = tqdm(total=total, desc=progress_desc or "Traitement", unit="rép.")
+            except Exception:
+                bar = None
+
+        # Plusieurs appels réseau en parallèle, bornés par max_concurrency, et on
+        # met à jour la barre au fur et à mesure que les lots se terminent.
         with ThreadPoolExecutor(max_workers=self.max_concurrency) as pool:
-            for i, text in pool.map(_one, list(enumerate(batch_messages))):
+            futures = {pool.submit(_one, (i, m)): i for i, m in enumerate(batch_messages)}
+            for fut in as_completed(futures):
+                i, text = fut.result()
                 results[i] = text
+                if bar is not None:
+                    bar.update(unit_weights[i] if unit_weights else 1)
+        if bar is not None:
+            bar.close()
         return results
 
     # ------------------------------------------------------------------ embeddings

@@ -70,28 +70,43 @@ def _chunks(seq: List[Any], n: int):
         yield seq[i : i + n]
 
 
-def _one_pass(items, labels_block, valid, cfg, *, llm_client, question, context, temperature):
-    """Un passage complet de classification (par lots). Renvoie {id: code valide}."""
+def _one_pass(items, labels_block, valid, cfg, *, llm_client, question, context, temperature,
+              progress=False, progress_desc=""):
+    """Un passage complet de classification (par lots). Renvoie {id_réel: code valide}.
+
+    On numérote les réponses LOCALEMENT (1..k) dans chaque lot, puis on remappe
+    vers les id réels : c'est court, robuste, et ça évite que le modèle ait à
+    recopier de longs identifiants (source d'erreurs)."""
     user_t = load_text(CLASSIFY_USER, cfg.classf.prompt_file)
-    batch_msgs = []
-    for ch in _chunks(items, max(1, cfg.classf.batch_size)):
-        responses = "\n".join(f"- [{i}] {t}" for i, t in ch)
+    chunks = list(_chunks(list(items), max(1, cfg.classf.batch_size)))
+    batch_msgs, local_maps = [], []
+    for ch in chunks:
+        lmap = {}
+        lines = []
+        for k, (rid, text) in enumerate(ch, start=1):
+            lmap[str(k)] = rid
+            lines.append(f"- [{k}] {text}")
+        local_maps.append(lmap)
         user = user_t.format(context=context or "(non précisé)", question=question or "(non précisée)",
-                             labels=labels_block, responses=responses)
+                             labels=labels_block, responses="\n".join(lines))
         batch_msgs.append([{"role": "system", "content": CLASSIFY_SYSTEM}, {"role": "user", "content": user}])
     schema = _classify_schema() if cfg.classf.enforce_json_schema else None
-    raws = llm_client.complete_batch(batch_msgs, model=cfg.classf.model, temperature=temperature,
-                                     max_tokens=64 + 24 * cfg.classf.batch_size, json_schema=schema)
+    max_toks = 200 + 50 * max((len(ch) for ch in chunks), default=1)
+    raws = llm_client.complete_batch(
+        batch_msgs, model=cfg.classf.model, temperature=temperature, max_tokens=max_toks,
+        json_schema=schema, progress=progress, progress_desc=progress_desc,
+        unit_weights=[len(ch) for ch in chunks])
     out: Dict[str, str] = {}
-    for raw in raws:
+    for raw, lmap in zip(raws, local_maps):
         try:
             data = _loads_loose(raw)
             arr = data.get("assignments", []) if isinstance(data, dict) else data
             for a in arr:
-                i = str(a.get("id", "")).strip()
+                loc = str(a.get("id", "")).strip()
                 code = str(a.get("code", "")).strip()
-                if i and code in valid:
-                    out[i] = code
+                rid = lmap.get(loc)
+                if rid is not None and code in valid:
+                    out[rid] = code
         except Exception:
             continue
     return out
@@ -122,7 +137,7 @@ def _vote(maps: List[Dict[str, str]], ids: List[str]) -> Tuple[Dict[str, str], D
 # Orchestrateur
 # ===========================================================================
 def run_classification(df, book, cfg: ProjectConfig, *, llm_client: Optional[LLMClient] = None,
-                       clusters: Optional[Sequence[int]] = None):
+                       clusters: Optional[Sequence[int]] = None, progress: bool = True):
     import pandas as pd
 
     leaves = assignable_labels(book)
@@ -157,14 +172,17 @@ def run_classification(df, book, cfg: ProjectConfig, *, llm_client: Optional[LLM
         labels_block = _format_labels(leaves)
         items = list(zip(ids, texts))
         q, ctx = cfg.survey.question, cfg.survey.context
+        n_iter = max(1, cfg.classf.n_iterations)
         maps = [_one_pass(items, labels_block, valid, cfg, llm_client=llm_client,
-                          question=q, context=ctx, temperature=cfg.classf.temperature)
-                for _ in range(max(1, cfg.classf.n_iterations))]
+                          question=q, context=ctx, temperature=cfg.classf.temperature,
+                          progress=progress, progress_desc=f"Classification (passage {k}/{n_iter})")
+                for k in range(1, n_iter + 1)]
         codes, agree = _vote(maps, ids)
         missing = [(i, t) for i, t in items if i not in codes]
         if missing:  # file de reprise, à température 0
             retry = _one_pass(missing, labels_block, valid, cfg, llm_client=llm_client,
-                              question=q, context=ctx, temperature=0.0)
+                              question=q, context=ctx, temperature=0.0,
+                              progress=progress, progress_desc="Classification (reprise)")
             for i, _t in missing:
                 codes[i] = retry.get(i, "OTHER")
                 agree.setdefault(i, 0.0)

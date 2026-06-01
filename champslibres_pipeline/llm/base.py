@@ -51,8 +51,13 @@ class LLMClient(ABC):
         temperature: float = 0.0,
         max_tokens: int = 1024,
         json_schema: Optional[Dict[str, Any]] = None,
+        progress: bool = False,
+        progress_desc: str = "",
+        unit_weights: Optional[List[int]] = None,
     ) -> List[str]:
-        """Comme complete(), mais pour une liste de conversations, en parallèle."""
+        """Comme complete(), mais pour une liste de conversations, en parallèle.
+        Si progress=True, affiche une barre de progression (avec estimation du
+        temps restant) ; unit_weights permet de compter en nombre de réponses."""
         ...
 
     @abstractmethod

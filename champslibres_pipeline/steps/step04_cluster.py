@@ -45,9 +45,29 @@ FRENCH_STOPWORDS: List[str] = [
 # ---------------------------------------------------------------------------
 # Construction du modèle BERTopic à partir de la config
 # ---------------------------------------------------------------------------
-def build_topic_model(cfg: ProjectConfig):
+def effective_cluster_params(cfg: ProjectConfig, n_docs: int) -> Dict[str, int]:
     """
-    Construit un BERTopic avec les réglages UMAP/HDBSCAN de la config.
+    Réglages effectifs UMAP/HDBSCAN, avec valeurs auto et garde-fous :
+      - min_cluster_size : config si fourni, sinon max(2, round(n/100)) ;
+      - min_samples      : config si fourni, sinon = min_cluster_size ;
+      - n_neighbors/n_components : bornés pour rester valides sur petits échantillons.
+    """
+    u, h = cfg.cluster.umap, cfg.cluster.hdbscan
+    mcs = h.min_cluster_size if h.min_cluster_size is not None else round(n_docs / 100)
+    mcs = max(2, min(int(mcs), n_docs))
+    ms = h.min_samples if h.min_samples is not None else mcs
+    ms = max(1, min(int(ms), mcs))
+    return {
+        "n_neighbors": max(2, min(u.n_neighbors, n_docs - 1)),
+        "n_components": max(2, min(u.n_components, n_docs - 2)),
+        "min_cluster_size": mcs,
+        "min_samples": ms,
+    }
+
+
+def build_topic_model(cfg: ProjectConfig, params: Dict[str, int]):
+    """
+    Construit un BERTopic avec les réglages effectifs (voir effective_cluster_params).
     Les imports sont locaux : l'extra [nlp] n'est requis que pour cette étape.
     """
     try:
@@ -63,19 +83,18 @@ def build_topic_model(cfg: ProjectConfig):
         ) from e
 
     u = cfg.cluster.umap
-    h = cfg.cluster.hdbscan
 
     umap_model = UMAP(
-        n_neighbors=u.n_neighbors,
-        n_components=u.n_components,
+        n_neighbors=params["n_neighbors"],
+        n_components=params["n_components"],
         min_dist=u.min_dist,
         metric=u.metric,
         random_state=u.random_state,
     )
     hdbscan_model = HDBSCAN(
-        min_cluster_size=h.min_cluster_size,
-        min_samples=h.min_samples,
-        metric=h.metric,
+        min_cluster_size=params["min_cluster_size"],
+        min_samples=params["min_samples"],
+        metric=cfg.cluster.hdbscan.metric,
         prediction_data=True,
     )
     vectorizer_model = CountVectorizer(stop_words=FRENCH_STOPWORDS)
@@ -144,7 +163,11 @@ def cluster_embeddings(
       - topic_model          : l'objet BERTopic (pour dendrogramme, etc.)
     """
     embeddings = np.asarray(embeddings, dtype=np.float32)
-    topic_model = build_topic_model(cfg)
+    params = effective_cluster_params(cfg, len(texts))
+    print(f"     (réglages auto : min_cluster_size={params['min_cluster_size']}, "
+          f"min_samples={params['min_samples']}, n_neighbors={params['n_neighbors']}, "
+          f"n_components={params['n_components']})")
+    topic_model = build_topic_model(cfg, params)
     labels, _ = topic_model.fit_transform(list(texts), embeddings)
     labels = np.asarray(labels)
 
@@ -170,6 +193,7 @@ def cluster_embeddings(
         "n_noise": n_noise,
         "noise_ratio": float(n_noise) / max(1, len(labels)),
         "topic_model": topic_model,
+        "params": params,
     }
 
 
@@ -208,20 +232,20 @@ def log_to_mlflow(cfg: ProjectConfig, result: Dict[str, Any], embedding_dim: int
     mlflow.set_experiment(cfg.cluster.mlflow.experiment)
 
     u = cfg.cluster.umap
-    h = cfg.cluster.hdbscan
+    p = result.get("params", {})
     with mlflow.start_run() as run:
         mlflow.log_params(
             {
                 "embedding_backend": cfg.embed.backend,
                 "embedding_model": cfg.embed.model_name or "auto",
                 "embedding_dim": embedding_dim,
-                "umap_n_neighbors": u.n_neighbors,
-                "umap_n_components": u.n_components,
+                "umap_n_neighbors": p.get("n_neighbors", u.n_neighbors),
+                "umap_n_components": p.get("n_components", u.n_components),
                 "umap_min_dist": u.min_dist,
                 "umap_metric": u.metric,
-                "hdbscan_min_cluster_size": h.min_cluster_size,
-                "hdbscan_min_samples": h.min_samples,
-                "hdbscan_metric": h.metric,
+                "hdbscan_min_cluster_size": p.get("min_cluster_size"),
+                "hdbscan_min_samples": p.get("min_samples"),
+                "hdbscan_metric": cfg.cluster.hdbscan.metric,
                 "top_n_words": cfg.cluster.top_n_words,
             }
         )

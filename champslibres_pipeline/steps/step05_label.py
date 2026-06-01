@@ -332,11 +332,25 @@ def cut_hierarchy(leaves, merges, *, threshold=None, n_max=None) -> Dict[int, in
     return {t: root_to_super[dsu.find(t)] for t in leaves}
 
 
-def _save_dendrogram(topic_model, hier_df, base_path: str) -> Optional[str]:
-    """Exporte le dendrogramme : PNG si possible (Chrome/kaleido), sinon HTML."""
+def _save_dendrogram(topic_model, hier_df, base_path: str, labelled_cxx=None) -> Optional[str]:
+    """Exporte le dendrogramme : PNG si possible (Chrome/kaleido), sinon HTML.
+    Les feuilles sont étiquetées 'Cxx : titre' (au lieu des mots-clés TF-IDF)."""
     stem = base_path.rsplit(".", 1)[0] if base_path.endswith((".png", ".html")) else base_path
+    use_custom = False
+    if labelled_cxx:
+        labels = {}
+        for c in labelled_cxx:
+            title = (c.get("title") or "").strip()
+            text = f"{c['category_id']} : {title}" if title else c["category_id"]
+            labels[_code_to_int(c["category_id"])] = text[:55]
+        try:
+            topic_model.set_topic_labels(labels)
+            use_custom = True
+        except Exception:  # noqa: BLE001
+            use_custom = False
     try:
-        fig = topic_model.visualize_hierarchy(hierarchical_topics=hier_df, width=1000, height=600)
+        fig = topic_model.visualize_hierarchy(hierarchical_topics=hier_df, custom_labels=use_custom,
+                                              width=1000, height=600)
     except TypeError:
         fig = topic_model.visualize_hierarchy(width=1000, height=600)
     try:
@@ -367,13 +381,16 @@ def _supertopic_desc(members: Sequence[str], keywords: Dict[int, List[str]], top
 def group_by_dendrogram(topic_model, docs, labelled_cxx, keywords, cfg, *, dendro_path: Optional[str] = None):
     """Regroupe via le dendrogramme natif de BERTopic. Renvoie (supercats, mapping)
     et exporte la visualisation (PNG sinon HTML) si dendro_path est fourni."""
+    if len(labelled_cxx) < 2:
+        print(f"[dendro] {len(labelled_cxx)} cluster(s) : hiérarchie impossible, pas de regroupement.")
+        return [], {}
     hier_df = topic_model.hierarchical_topics(list(docs))
     leaves, merges = hierarchy_to_merges(hier_df)
     g = cfg.label.grouping
     assign = cut_hierarchy(leaves, merges, threshold=g.threshold, n_max=g.n_max)
 
     if dendro_path:
-        _save_dendrogram(topic_model, hier_df, dendro_path)
+        _save_dendrogram(topic_model, hier_df, dendro_path, labelled_cxx=labelled_cxx)
 
     by_super: "OrderedDict[int, List[str]]" = OrderedDict()
     for c in labelled_cxx:
