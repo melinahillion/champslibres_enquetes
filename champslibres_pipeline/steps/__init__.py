@@ -11,5 +11,12 @@ from . import step01_gec
 from . import step02_dedup
 from . import step03_embed
 from . import step04_cluster
+from . import step05_label
 
-__all__ = ["step01_gec", "step02_dedup", "step03_embed", "step04_cluster"]
+__all__ = [
+    "step01_gec",
+    "step02_dedup",
+    "step03_embed",
+    "step04_cluster",
+    "step05_label",
+]

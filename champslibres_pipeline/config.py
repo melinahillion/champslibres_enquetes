@@ -21,7 +21,7 @@ clés (S3, LLM), on n'y met que le NOM d'une variable d'environnement
 
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -53,8 +53,6 @@ def get_secret(env_var_name: str, *, required: bool = True) -> Optional[str]:
 # ---------------------------------------------------------------------------
 class IOConfig(BaseModel):
     source_csv: str
-    question_json: Optional[str] = None
-    modalites_json: Optional[str] = None
 
 
 class ColumnsConfig(BaseModel):
@@ -124,6 +122,14 @@ class ClusterConfig(BaseModel):
     mlflow: ClusterMLflowConfig = Field(default_factory=ClusterMLflowConfig)
 
 
+class GroupingConfig(BaseModel):
+    # Regroupement des Cxx en super-catégories Fxx, quand AUCUNE modalité Rxx
+    # n'est fournie. Trois méthodes au choix.
+    method: str = "none"            # "none" | "dendrogram" | "llm"
+    n_max: int = 10                 # nb max de super-catégories Fxx
+    threshold: Optional[float] = None  # (dendrogram) seuil de distance ; si null -> n_max
+
+
 class LabelConfig(BaseModel):
     mode: str = "llm"                 # "llm" (auto) | "human"
     model: Optional[str] = None
@@ -131,6 +137,8 @@ class LabelConfig(BaseModel):
     prompt_subs_file: Optional[str] = None
     prompt_supers_file: Optional[str] = None
     prompt_mapping_file: Optional[str] = None
+    prompt_group_file: Optional[str] = None
+    grouping: GroupingConfig = Field(default_factory=GroupingConfig)
     human_label_book: Optional[str] = None
 
 
@@ -156,6 +164,16 @@ class MLflowConfig(BaseModel):
     tracking_uri_env: str = "MLFLOW_TRACKING_URI"
 
 
+class SurveyConfig(BaseModel):
+    # Contexte de l'enquête, utilisé pour guider le LLM (étape 05).
+    question: str = ""                # la question à laquelle répondent les champs libres
+    context: str = ""                 # contexte global de l'enquête (quelques phrases)
+    # Modalités existantes (Rxx), OPTIONNELLES. Soit en clair ici, soit via un fichier JSON.
+    # Format attendu d'un élément : {"code": "R01", "label": "...", "description": "..."}
+    modalities: List[Dict[str, str]] = Field(default_factory=list)
+    modalities_file: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Configuration complète d'un projet
 # ---------------------------------------------------------------------------
@@ -169,6 +187,7 @@ class ProjectConfig(BaseModel):
     bucket: str
 
     io: IOConfig
+    survey: SurveyConfig = Field(default_factory=SurveyConfig)
     columns: ColumnsConfig = Field(default_factory=ColumnsConfig)
     s3: S3Config = Field(default_factory=S3Config)
     llm: LLMConfig = Field(default_factory=LLMConfig)

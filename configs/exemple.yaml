@@ -10,8 +10,15 @@ bucket:  mon-bucket-sspcloud        # bucket S3 (MinIO du SSP Cloud)
 # --- Données d'entrée et noms de colonnes -----------------------------------
 io:
   source_csv:     "s3://mon-bucket-sspcloud/data/exemple_input.csv"
-  question_json:  null     # (option) libellé de la question d'enquête
-  modalites_json: null     # (option) modalités déjà existantes (Rxx)
+
+# --- Contexte de l'enquête (sert à guider le LLM de l'étape 05) -------------
+survey:
+  question: "Quelles suites ont été données à l'incident ?"   # la question des champs libres
+  context:  ""             # contexte global de l'enquête (quelques phrases), optionnel
+  modalities: []           # modalités existantes Rxx (OPTIONNEL). Exemple :
+                           #   - {code: "R01", label: "Assurance", description: "Démarches d'assurance."}
+                           #   - {code: "R02", label: "Police",    description: "Dépôt de plainte."}
+  modalities_file: null    # ou un chemin vers un fichier JSON de modalités
 
 columns:
   id:    "SEQ_ID"          # identifiant unique  (présent dans tes données)
@@ -74,7 +81,13 @@ label:
   prompt_subs_file:    null   # prompts modifiables (sinon défauts)
   prompt_supers_file:  null
   prompt_mapping_file: null
-  human_label_book:    null   # si mode "human": chemin S3 d'un Label_book.json
+  prompt_group_file:   null
+  # Regroupement des Cxx en super-catégories Fxx quand AUCUN Rxx n'est fourni :
+  grouping:
+    method:    "none"         # "none" | "dendrogram" | "llm"
+    n_max:     10             # nb max de super-catégories Fxx
+    threshold: null           # (dendrogram) seuil de distance ; si null -> n_max
+  human_label_book:    null   # si mode "human": chemin vers un Label_book.json édité
 
 # --- Étape 06 : classification ----------------------------------------------
 classf:
