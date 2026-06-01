@@ -63,6 +63,10 @@ class ColumnsConfig(BaseModel):
 
 class S3Config(BaseModel):
     endpoint_env: str = "AWS_S3_ENDPOINT"
+    access_key_env: str = "AWS_ACCESS_KEY_ID"
+    secret_key_env: str = "AWS_SECRET_ACCESS_KEY"
+    token_env: str = "AWS_SESSION_TOKEN"
+    outputs_prefix: str = "champslibres"
 
 
 class LLMConfig(BaseModel):
@@ -150,6 +154,8 @@ class ClassfConfig(BaseModel):
     temperature: float = 0.0
     batch_size: int = 20              # nb de réponses classées par appel LLM
     enforce_json_schema: bool = True
+    nothink: bool = True              # True -> désactive le raisonnement (Qwen3/R1)
+    extra_tokens_thinking: int = 0    # tokens supplémentaires si le modèle pense quand même
     prompt_file: Optional[str] = None
     human_column: str = "code_humain" # (mode "humain") colonne contenant les codes
     label_book: Optional[str] = None

@@ -1,0 +1,92 @@
+project: AUTEUR_ISI2026
+bucket: projet-champs-libres-vrs
+io:
+  source_csv: projet-champs-libres-vrs/AUTEUR/data/anon_AUTEUR_22_25_Type1.csv
+survey:
+  question: Selon vous, qui est l'auteur des faits que vous avez subis ?
+  context: ''
+  modalities: []
+  modalities_file: null
+columns:
+  id: SEQ_ID
+  text: text_brut
+  clean: text_clean
+s3:
+  endpoint_env: AWS_S3_ENDPOINT
+  access_key_env: AWS_ACCESS_KEY_ID
+  secret_key_env: AWS_SECRET_ACCESS_KEY
+  token_env: AWS_SESSION_TOKEN
+  outputs_prefix: champslibres
+llm:
+  backend: llm_lab
+  base_url: https://llm.lab.sspcloud.fr/api
+  api_key_env: LLM_LAB_API_KEY
+  default_model: null
+  max_concurrency: 8
+  timeout_sec: 120
+gec:
+  mode: light
+  model: null
+  temperature: 0.0
+  batch_size: 32
+  prompt_file: null
+embed:
+  backend: llm_lab
+  model_name: null
+  batch_size: 32
+  normalize: true
+  device: cpu
+cluster:
+  umap:
+    n_neighbors: 15
+    n_components: 10
+    min_dist: 0.0
+    metric: cosine
+    random_state: 42
+  hdbscan:
+    min_cluster_size: null
+    min_samples: null
+    metric: euclidean
+  top_n_words: 10
+  nr_representative_docs: 10
+  language: french
+  mlflow:
+    enabled: true
+    experiment: champslibres-clustering
+label:
+  mode: llm
+  model: gemma4-26b-moe
+  temperature: 0.3
+  prompt_subs_file: null
+  prompt_supers_file: null
+  prompt_mapping_file: null
+  prompt_group_file: null
+  grouping:
+    method: dendrogram
+    n_max: 10
+    threshold: null
+classf:
+  mode: llm
+  model: gemma4-26b-moe
+  n_iterations: 1
+  temperature: 0.0
+  batch_size: 20
+  enforce_json_schema: true
+  prompt_file: null
+  human_column: code_humain
+  label_book: projet-champs-libres-vrs/champslibres/AUTEUR_ISI2026/05_label/AUTEUR_label_book_human.json
+eval:
+  annotated_csv: projet-champs-libres-vrs/LABELLED/AUTEUR/AUTEUR_human_labelled.csv
+  id_column: null
+  text_column: null
+  human_columns:
+  - CODE1
+  - CODE2
+  models:
+  - gemma4-26b-moe
+  - qwen3-6-35b-moe
+  bootstrap_B: 2000
+  random_state: 42
+mlflow:
+  enabled: true
+  tracking_uri_env: MLFLOW_TRACKING_URI

@@ -72,6 +72,32 @@ def cluster_code(cluster_id: int) -> str:
     return f"C{int(cluster_id):02d}"
 
 
+def normalize_label_book(obj, *, question: str = "", context: str = ""):
+    """Accepte un label book au format INTERNE (dict avec 'categories') OU au
+    format LONG révisé par un humain (liste de lignes Super_cat/Super_label/
+    Super_description/Sub_cat/Sub_label/Sub_description) et renvoie le format
+    interne imbriqué."""
+    if isinstance(obj, dict) and "categories" in obj:
+        return obj
+    if not isinstance(obj, list):
+        raise ValueError("Label book non reconnu (attendu : dict 'categories' ou liste Super/Sub).")
+    groups = OrderedDict()
+    for e in obj:
+        sc = str(e["Super_cat"]).strip()
+        g = groups.setdefault(sc, {"code": sc, "label": e.get("Super_label", ""),
+                                   "description": e.get("Super_description", ""), "children": []})
+        sub = str(e["Sub_cat"]).strip()
+        g["children"].append({"category_id": sub, "title": e.get("Sub_label", ""),
+                              "description": e.get("Sub_description", "")})
+    has_rxx = any(code.startswith("R") for code in groups)
+    categories = []
+    for code, g in groups.items():
+        g["source"] = "existing" if code.startswith("R") else ("residual" if code == "OTHER" else "generated")
+        categories.append(g)
+    return {"question": question, "context": context,
+            "has_existing_modalities": has_rxx, "categories": categories}
+
+
 def _code_to_int(code: str) -> int:
     return int(code[1:])
 

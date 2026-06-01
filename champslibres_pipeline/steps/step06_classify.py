@@ -70,6 +70,15 @@ def _chunks(seq: List[Any], n: int):
         yield seq[i : i + n]
 
 
+_REASONING_HINTS = ("qwen3", "qwen-3", "qwq", "deepseek", "-r1", "r1-", "glm-z", "reason", "think")
+
+
+def _is_reasoning_model(model: Optional[str]) -> bool:
+    """Repère les modèles à raisonnement (thinking) d'après leur nom."""
+    name = (model or "").lower()
+    return any(h in name for h in _REASONING_HINTS)
+
+
 def _one_pass(items, labels_block, valid, cfg, *, llm_client, question, context, temperature,
               progress=False, progress_desc=""):
     """Un passage complet de classification (par lots). Renvoie {id_réel: code valide}.
@@ -91,10 +100,16 @@ def _one_pass(items, labels_block, valid, cfg, *, llm_client, question, context,
                              labels=labels_block, responses="\n".join(lines))
         batch_msgs.append([{"role": "system", "content": CLASSIFY_SYSTEM}, {"role": "user", "content": user}])
     schema = _classify_schema() if cfg.classf.enforce_json_schema else None
-    max_toks = 200 + 50 * max((len(ch) for ch in chunks), default=1)
+    max_toks = 200 + 50 * max((len(ch) for ch in chunks), default=1) + cfg.classf.extra_tokens_thinking
+    # Désactive le raisonnement des modèles "thinking" (Qwen3, DeepSeek-R1…) via le
+    # mécanisme vLLM, et UNIQUEMENT pour ces modèles : l'appel aux autres (gemma…)
+    # reste strictement identique.
+    extra_body = None
+    if cfg.classf.nothink and _is_reasoning_model(cfg.classf.model):
+        extra_body = {"chat_template_kwargs": {"enable_thinking": False}}
     raws = llm_client.complete_batch(
         batch_msgs, model=cfg.classf.model, temperature=temperature, max_tokens=max_toks,
-        json_schema=schema, progress=progress, progress_desc=progress_desc,
+        json_schema=schema, extra_body=extra_body, progress=progress, progress_desc=progress_desc,
         unit_weights=[len(ch) for ch in chunks])
     out: Dict[str, str] = {}
     for raw, lmap in zip(raws, local_maps):

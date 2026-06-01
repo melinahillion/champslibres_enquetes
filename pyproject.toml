@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "champslibres-pipeline"
-version = "0.3.0"
+version = "0.4.0"
 description = "Pipeline complet pour le traitement des champs libres dans les enquêtes."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -38,6 +38,7 @@ nlp = [
   "umap-learn",
   "hdbscan",
   "spacy",
+  "matplotlib",              # figures de restitution (étape 08)
   "mlflow",                  # journalisation des paramètres et performances
 ]
 
@@ -55,8 +56,8 @@ dev = ["black", "ruff", "pytest"]
 # dédié, documenté séparément. Par défaut, tout tourne en CPU via llm.lab.
 
 # La commande en ligne `champslibres` sera réactivée quand on aura migré la CLI.
-# [project.scripts]
-# champslibres = "champslibres_pipeline.cli:main"
+[project.scripts]
+champslibres = "champslibres_pipeline.cli:main"
 
 # --- Découverte des packages ------------------------------------------------
 # On indique explicitement à setuptools quel dossier empaqueter, pour qu'il

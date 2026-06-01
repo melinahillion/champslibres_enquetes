@@ -1,137 +1,150 @@
 # champslibres-pipeline
 
 Pipeline semi-automatisé pour le traitement des **champs libres** (réponses
-textuelles courtes) des enquêtes statistiques : correction du texte,
-déduplication, embeddings, exploration par clustering (BERTopic), construction
-d'un *label book*, classification par grand modèle de langage, puis évaluation.
+textuelles courtes) des enquêtes statistiques : statistiques descriptives,
+exploration par clustering, construction d'un *label book*, classification par
+grand modèle de langage (LLM), puis évaluation des accords (humains / modèles).
 
-Conçu pour le **SSP Cloud** (Onyxia), avec les modèles de `llm.lab`. Tout
-fonctionne en **CPU par défaut** ; le GPU n'est pas nécessaire.
+Conçu pour le **SSP Cloud** (Onyxia), avec les modèles de `llm.lab` et le
+stockage **S3** (MinIO). Tout fonctionne en CPU.
 
-> **État** : socle + étapes 01 à 04 (cœurs) construits et testés.
-> Étapes 05–07, câblage S3 (étape 00 + API `Project`) et interface Streamlit à venir.
-
----
-
-## 1. Prérequis
-
-- Un service du SSP Cloud (**VSCode-python**, ou **VSCode-pytorch** pour l'étape 04).
-- Python ≥ 3.12 (fourni par le service).
-- `uv` (gestionnaire de paquets). S'il n'est pas présent : `pip install uv`.
-- Une clé d'API `llm.lab` placée dans Vault (voir §2).
-
----
-
-## 2. Variables d'environnement (secrets)
-
-Le pipeline ne stocke **aucun secret** dans le code : il lit des variables
-d'environnement. On ne met dans le YAML que le *nom* de ces variables.
-
-| Variable | Rôle | Comment l'obtenir |
-|---|---|---|
-| `LLM_LAB_API_KEY` | clé de l'API llm.lab | **à ajouter dans Vault** (« Mes secrets »), puis à injecter au lancement du service |
-| `AWS_S3_ENDPOINT`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | accès au stockage S3 | **injectées automatiquement** par le SSP Cloud |
-| `MLFLOW_TRACKING_URI` | serveur MLflow (étape 04) | injectée automatiquement si le service MLflow est activé ; sinon les runs vont en local dans `./mlruns` |
-| `HF_TOKEN` | (optionnel) modèle d'embedding « fermé » depuis HuggingFace | à ajouter dans Vault si besoin |
-
-Vérifier que les variables sont bien présentes :
+## 1. Installation (uv)
 
 ```bash
-echo $AWS_S3_ENDPOINT
-[ -n "$LLM_LAB_API_KEY" ] && echo "clé LLM présente"
+pip install uv            # si uv n'est pas déjà présent
+uv sync --extra nlp       # coeur + clustering BERTopic, embeddings, MLflow, figures
+uv run champslibres --help
 ```
 
----
+> La commande s'appelle **`champslibres`** (pas le nom du dossier du dépôt).
+> Elle n'existe qu'après `uv sync`, et se lance via `uv run champslibres …`.
 
-## 3. Installation avec uv
-
-```bash
-pip install uv                 # si uv n'est pas déjà présent
-
-uv sync                        # installe le COEUR (config, LLM, S3, dédup, éval)
-uv sync --extra nlp            # AJOUTE embeddings + clustering BERTopic + MLflow (étapes 03-04)
-```
-
-Extras disponibles :
-
-| Commande | Ce qu'elle ajoute | Quand |
-|---|---|---|
-| `uv sync` | cœur (CPU, léger) | toujours |
-| `uv sync --extra nlp` | BERTopic, UMAP, HDBSCAN, sentence-transformers, MLflow | étape 04 (et embedding HuggingFace optionnel) |
-| `uv sync --extra ui` | Streamlit | interface (à venir) |
-
-> `--extra nlp` installe `torch` (dépendance de BERTopic) : c'est volumineux,
-> prévois quelques Go d'espace disque. Le GPU n'est **pas** nécessaire.
-
----
-
-## 4. « Tout est-il déjà dans .venv grâce à uv ? »
-
-En partie — et c'est pourquoi ces commandes restent documentées :
-
-- `uv.lock` (versionné) **fige les versions** exactes des paquets : reproductibilité garantie.
-- `.venv/` (l'environnement installé) **n'est pas versionné** (il est dans `.gitignore`).
-  Sur un nouveau service, ou pour un clone du dépôt, il n'existe pas : il faut le recréer.
-- `uv sync` **recrée `.venv`** à partir de `pyproject.toml` + `uv.lock`. Les extras
-  sont **optionnels** : `uv sync` seul n'installe **pas** `[nlp]` ; il faut `uv sync --extra nlp`.
-
-Raccourci : `uv run` synchronise le cœur automatiquement avant d'exécuter. Pour une
-commande qui a besoin de l'extra `nlp` sans `uv sync --extra nlp` préalable :
-
-```bash
-uv run --extra nlp python scripts/test_step04.py
-```
-
----
-
-## 5. Tests / utilisation
-
-```bash
-uv run python scripts/test_socle.py     # socle : config + connexion llm.lab + modèles dispo
-uv run python scripts/test_step01.py    # correction du texte (none / light / llm)
-uv run python scripts/test_step02.py    # déduplication
-uv run python scripts/test_step03.py    # embeddings (llm.lab par défaut, repli HuggingFace)
-
-uv sync --extra nlp                      # requis pour l'étape 04
-uv run python scripts/test_step04.py     # clustering BERTopic + MLflow
-```
-
-Les sections « RÉEL » de ces tests (appels llm.lab) ne s'exécutent que si
-`LLM_LAB_API_KEY` est présente ; sinon elles sont ignorées proprement.
-
----
-
-## 6. Avant de pousser sur GitHub
-
-Le `.gitignore` exclut déjà `.venv/`, les caches, `mlruns/` et tout fichier de secrets.
-Avant le premier `git push`, vérifier l'absence de secrets en clair et ce que git suit :
-
-```bash
-grep -rInE "sk-[A-Za-z0-9]{8,}|hf_[A-Za-z0-9]{8,}|(password|secret|api_key|token)[[:space:]]*[:=]" . --exclude-dir=.venv --exclude-dir=.git
-git ls-files | grep -iE "\.env|secret|\.pem|\.key" || echo "aucun fichier sensible suivi"
-```
-
-**Données** : `data/` peut contenir de vraies réponses d'enquête. Vérifier les règles
-de **secret statistique** avant publication (dépôt privé recommandé en cas de doute),
-ou remplacer par un jeu fictif.
-
----
-
-## 7. Structure du projet
+## Structure du dépôt
 
 ```
-champslibres_enquetes/
-├── pyproject.toml              # dépendances + config du projet
-├── uv.lock                     # versions figées (versionné)
+champslibres_enquetes/            (racine du dépôt)
+├── pyproject.toml                déclare les dépendances et la commande `champslibres`
 ├── README.md
 ├── .gitignore
-├── champslibres_pipeline/      # le package (code)
-│   ├── config.py               # config unifiée (YAML -> objet validé)
-│   ├── llm/                    # couche LLM (llm.lab)
-│   ├── prompts/                # prompts par défaut, éditables
-│   └── steps/                  # étapes 01..04 (puis 05..07)
-├── configs/
-│   └── exemple.yaml            # un fichier de config par projet
-├── scripts/                    # scripts de test
-└── data/                       # données (voir §6 : confidentialité)
+├── champslibres_pipeline/        le package Python
+│   ├── __init__.py  config.py  s3io.py  paths.py  project.py  cli.py
+│   ├── llm/          client llm.lab (OpenAI-compatible)
+│   ├── prompts/      prompts éditables (gec, label, classf)
+│   └── steps/        step00_describe … step08_report
+├── configs/          exemple.yaml, auteur_isi2026.yaml  (TA configuration)
+├── scripts/          list_models.py, demo_*.py, make_eval_dataset.py, test_*.py
+└── data/             échantillons locaux (NON versionnés : secret statistique)
 ```
+
+Le **label book révisé par un humain** est une donnée : il ne va pas dans le
+dépôt mais sur S3 (voir §6).
+
+## 2. Secrets et variables d'environnement (SSP Cloud)
+
+Injectées automatiquement par Onyxia : `AWS_S3_ENDPOINT`, `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (accès S3) et, si le service MLflow
+est allumé, `MLFLOW_TRACKING_URI`.
+
+À ajouter une fois dans **Vault → « Mes secrets »** puis à injecter au lancement
+du service : `LLM_LAB_API_KEY` (clé de l'API llm.lab).
+
+```bash
+uv run champslibres list-models        # vérifie l'accès et liste les modèles llm.lab
+```
+
+## 3. Configuration d'un projet
+
+Toute la configuration tient dans **un fichier YAML** (voir `configs/exemple.yaml`
+et `configs/auteur_isi2026.yaml`). Tu peux en générer un :
+
+```bash
+uv run champslibres init --project AUTEUR_ISI2026 \
+    --source projet-champs-libres-vrs/AUTEUR/data/anon_AUTEUR_22_25_Type1.csv
+```
+
+Champs principaux : `project` (nom du projet), `bucket`, `io.source_csv` (CSV
+brut : `id` + `texte`), `columns` (SEQ_ID / text_brut), `survey` (question +
+modalités Rxx éventuelles), `label.grouping` (regroupement Fxx), `classf`
+(classification), `eval` (jeu annoté, colonnes humaines, modèles à comparer).
+
+## 4. Organisation des sorties sur S3
+
+Chaque projet écrit ses artefacts sous `{bucket}/{outputs_prefix}/{project}/` :
+
+```
+00_describe/   stats descriptives (nb de mots)
+01_gec/        texte corrigé/normalisé
+02_dedup/      réponses dédupliquées + table de correspondance
+03_embed/      embeddings (cache) + ids
+04_cluster/    clusters.csv, keywords.csv, representative.csv
+05_label/      label_book.json (auto), label_book_human.json (révisé), labels.csv, dendrogramme.html
+06_classify/   classifications.csv
+07_eval/       pairwise.csv, by_type.csv, fleiss.json, distribution_par_classe.csv/.png, accords.csv
+config.yaml    copie de la config utilisée (traçabilité)
+```
+
+Les **données brutes** et le **jeu annoté** restent à leur emplacement S3 ; on
+n'écrit que les artefacts ici.
+
+## 5. Commandes (CLI)
+
+```bash
+uv run champslibres list-models                       # modèles llm.lab disponibles
+uv run champslibres scaffold        -c configs/auteur_isi2026.yaml  # crée l'arborescence S3 du projet
+uv run champslibres describe        -c configs/auteur_isi2026.yaml  # stats descriptives
+uv run champslibres build-labelbook -c configs/auteur_isi2026.yaml  # étapes 00->05 (+ dendrogramme)
+uv run champslibres classify        -c configs/auteur_isi2026.yaml  # étape 06 (label book auto ou humain)
+uv run champslibres eval            -c configs/auteur_isi2026.yaml  # étape 07-08 (accords + tables/figure)
+uv run champslibres run             -c configs/auteur_isi2026.yaml  # 00->06 d'un coup (label book auto)
+uv run champslibres rerun           -c configs/auteur_isi2026.yaml  # re-cluster/label/classif depuis le cache embeddings
+```
+
+## 6. Workflow avec label book révisé par un humain
+
+1. `champslibres scaffold -c config.yaml`
+   → crée l'arborescence du projet sur S3 (dossiers visibles dans la console MinIO).
+2. `champslibres build-labelbook -c config.yaml`
+   → produit `05_label/label_book.json` (automatique) et `05_label/dendrogramme.html`.
+3. Un expert **révise** le label book (fusion/renommage des Cxx, super-catégories
+   Rxx/Fxx). Le fichier révisé peut être au format « long » (`Super_cat`,
+   `Super_label`, `Super_description`, `Sub_cat`, `Sub_label`, `Sub_description`)
+   ou au format interne imbriqué ; **les deux sont acceptés**.
+4. Dépose le fichier révisé sur S3 en `05_label/label_book_human.json` et renseigne
+   son chemin dans **`classf.label_book`** (le seul champ qui pilote le label book
+   utilisé en aval).
+5. `champslibres classify -c config.yaml` → classe avec le **label book humain**.
+6. `champslibres eval -c config.yaml` → accords humain-humain / humain-modèle /
+   modèle-modèle + tables et figure.
+
+Le LLM classe toujours au niveau des **feuilles** (Cxx ou Rxx-feuille) ; le
+mapping vers les **super-catégories** (Rxx/Fxx) se fait via le label book, et
+c'est à ce niveau que se font toutes les comparaisons.
+
+## 7. API Projet (Python / notebook / Streamlit)
+
+```python
+from champslibres_pipeline import Project
+p = Project("configs/auteur_isi2026.yaml")
+p.build_label_book()     # 00 -> 05
+# ... révision humaine du label book, dépôt sur S3, classf.label_book renseigné ...
+p.classify()             # 06
+res = p.evaluate()       # 07 -> 08 ; res["accords"], res["distribution"]
+```
+
+## 8. Suivi MLflow
+
+Si le service MLflow est allumé (`MLFLOW_TRACKING_URI` injectée), le clustering
+et l'évaluation sont journalisés dans une **expérience portant le nom du projet**
+(paramètres, métriques d'accord, tables et figure en artefacts).
+
+## 9. Tests (hors-ligne)
+
+```bash
+uv run python scripts/test_step05.py    # label book + regroupement
+uv run python scripts/test_step06.py    # classification
+uv run python scripts/test_step07.py    # métriques d'accord
+uv run python scripts/test_wiring.py    # S3 + API Projet + CLI (simulé en local)
+```
+
+> Données réelles = secret statistique : ne pas committer `data/` ni les sorties
+> dans git ; tout reste sur S3.

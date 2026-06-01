@@ -407,7 +407,7 @@ wheels = [
 
 [[package]]
 name = "champslibres-pipeline"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
@@ -430,6 +430,7 @@ dev = [
 nlp = [
     { name = "bertopic" },
     { name = "hdbscan" },
+    { name = "matplotlib" },
     { name = "mlflow" },
     { name = "scikit-learn" },
     { name = "sentence-transformers" },
@@ -445,6 +446,7 @@ requires-dist = [
     { name = "bertopic", marker = "extra == 'nlp'" },
     { name = "black", marker = "extra == 'dev'" },
     { name = "hdbscan", marker = "extra == 'nlp'" },
+    { name = "matplotlib", marker = "extra == 'nlp'" },
     { name = "mlflow", marker = "extra == 'nlp'" },
     { name = "numpy" },
     { name = "openai" },

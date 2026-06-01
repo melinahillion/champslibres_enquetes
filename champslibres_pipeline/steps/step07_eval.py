@@ -204,5 +204,10 @@ def run_evaluation(df, book, cfg: ProjectConfig, *, model_cxx_columns: Optional[
     if len(rater_cols) >= 2:
         fleiss["tous_juges"] = round(fleiss_kappa(df, rater_cols), 3)
 
+    display = {c: f"Humain {i + 1}" for i, c in enumerate(human_cols)}
+    display.update({c: _pretty(c) for c in model_super_cols})
+
     return {"pairwise": pairwise, "by_type": by_type_summary(pairwise), "fleiss": fleiss,
-            "raters": {"humains": human_cols, "modeles": [_pretty(c) for c in model_super_cols]}}
+            "raters": {"humains": human_cols, "modeles": [_pretty(c) for c in model_super_cols]},
+            "table": df, "rater_cols": rater_cols, "human_cols": human_cols,
+            "model_super_cols": model_super_cols, "display": display}

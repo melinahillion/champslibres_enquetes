@@ -32,6 +32,7 @@ class LLMClient(ABC):
         temperature: float = 0.0,
         max_tokens: int = 1024,
         json_schema: Optional[Dict[str, Any]] = None,
+        extra_body: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Envoie une conversation et renvoie la réponse texte du modèle.
@@ -51,6 +52,7 @@ class LLMClient(ABC):
         temperature: float = 0.0,
         max_tokens: int = 1024,
         json_schema: Optional[Dict[str, Any]] = None,
+        extra_body: Optional[Dict[str, Any]] = None,
         progress: bool = False,
         progress_desc: str = "",
         unit_weights: Optional[List[int]] = None,

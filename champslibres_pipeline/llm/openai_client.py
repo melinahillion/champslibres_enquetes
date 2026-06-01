@@ -68,6 +68,7 @@ class OpenAICompatibleClient(LLMClient):
         temperature: float = 0.0,
         max_tokens: int = 1024,
         json_schema: Optional[Dict[str, Any]] = None,
+        extra_body: Optional[Dict[str, Any]] = None,
     ) -> str:
         response_format = self._response_format(json_schema)
         last_err: Optional[Exception] = None
@@ -82,6 +83,8 @@ class OpenAICompatibleClient(LLMClient):
                 )
                 if response_format is not None:
                     kwargs["response_format"] = response_format
+                if extra_body:
+                    kwargs["extra_body"] = extra_body
                 resp = self._client.chat.completions.create(**kwargs)
                 return resp.choices[0].message.content or ""
             except Exception as e:  # noqa: BLE001 - on réessaie après une pause
@@ -104,6 +107,7 @@ class OpenAICompatibleClient(LLMClient):
         temperature: float = 0.0,
         max_tokens: int = 1024,
         json_schema: Optional[Dict[str, Any]] = None,
+        extra_body: Optional[Dict[str, Any]] = None,
         progress: bool = False,
         progress_desc: str = "",
         unit_weights: Optional[List[int]] = None,
@@ -118,6 +122,7 @@ class OpenAICompatibleClient(LLMClient):
                 temperature=temperature,
                 max_tokens=max_tokens,
                 json_schema=json_schema,
+                extra_body=extra_body,
             )
             return i, text
 
