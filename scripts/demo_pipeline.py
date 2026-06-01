@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """
-Démonstration de bout en bout sur tes données (data/exemple_input.csv ou autre).
+Démonstration de bout en bout sur tes données (data/anon_NODCL_2425_T1_TEXT.csv ou autre).
 
     uv sync --extra nlp
     uv run python scripts/demo_pipeline.py
@@ -26,10 +26,11 @@ from champslibres_pipeline.config import load_config
 from champslibres_pipeline.steps.step01_gec import apply_gec
 from champslibres_pipeline.steps.step02_dedup import dedup
 from champslibres_pipeline.steps.step03_embed import embed_texts
-from champslibres_pipeline.steps.step04_cluster import cluster_embeddings, cluster_code
-from champslibres_pipeline.steps.step05_label import run_label_book
+from champslibres_pipeline.steps.step04_cluster import cluster_embeddings
+from champslibres_pipeline.steps.step05_label import cluster_code, run_label_book
+from champslibres_pipeline.steps.step06_classify import run_classification
 
-SAMPLE = "data/exemple_input.csv"
+SAMPLE = "data/anon_NODCL_2425_T1_TEXT.csv"
 OUTDIR = "output"
 
 
@@ -64,12 +65,12 @@ def main() -> int:
         cfg.label.model = "gemma4-26b-moe"
 
     # >>> seuils à ADAPTER à la taille de l'échantillon <<<
-    cfg.cluster.umap.n_neighbors = 8
+    cfg.cluster.umap.n_neighbors = 40
     cfg.cluster.umap.n_components = 5
-    cfg.cluster.hdbscan.min_cluster_size = 3
-    cfg.cluster.hdbscan.min_samples = 2
+    cfg.cluster.hdbscan.min_cluster_size = 80
+    cfg.cluster.hdbscan.min_samples = 20
 
-    print("1/5  Lecture + correction légère + déduplication...")
+    print("1/6  Lecture + correction légère + déduplication...")
     df = pd.read_csv(SAMPLE, dtype=str)
     cfg.gec.mode = "light"
     df = apply_gec(df, cfg)
@@ -78,21 +79,26 @@ def main() -> int:
     texts = dedup_df[cfg.columns.clean].tolist()
     print(f"     {len(df)} réponses -> {len(dedup_df)} uniques")
 
-    print("2/5  Embeddings via llm.lab...")
+    print("2/6  Embeddings via llm.lab...")
     emb = embed_texts(texts, cfg, llm_client=client)
     print(f"     matrice {emb.shape}")
 
-    print("3/5  Clustering BERTopic...")
+    print("3/6  Clustering BERTopic...")
     res = cluster_embeddings(texts, emb, ids, cfg)
     print(f"     {res['n_clusters']} clusters, {res['n_noise']} 'bruit'")
 
-    print(f"4/5  Label book (regroupement Fxx = '{cfg.label.grouping.method}')...")
+    print(f"4/6  Label book (regroupement Fxx = '{cfg.label.grouping.method}')...")
     dendro = f"{OUTDIR}/dendrogramme"
     book = run_label_book(res["keywords"], res["representative_docs"], cfg,
                           llm_client=client, topic_model=res["topic_model"], docs=texts,
                           dendro_path=dendro)
 
-    print("5/5  Écriture des résultats...")
+    print(f"5/6  Classification (mode '{cfg.classf.mode}')...")
+    if not cfg.classf.model:
+        cfg.classf.model = cfg.label.model
+    classif = run_classification(dedup_df, book, cfg, llm_client=client, clusters=res["labels"])
+
+    print("6/6  Écriture des résultats...")
     pd.DataFrame(
         [{"cluster": cluster_code(c), "n_docs": int((res["labels"] == c).sum()),
           "keywords": ", ".join(words)} for c, words in res["keywords"].items()]
@@ -106,11 +112,13 @@ def main() -> int:
          for c, docs in res["representative_docs"].items() for (i, t) in docs]
     ).to_csv(f"{OUTDIR}/representative.csv", index=False)
     pd.DataFrame(collect_cxx(book)).to_csv(f"{OUTDIR}/labels.csv", index=False)
+    classif.to_csv(f"{OUTDIR}/classifications.csv", index=False)
     with open(f"{OUTDIR}/label_book.json", "w", encoding="utf-8") as f:
         json.dump(book, f, ensure_ascii=False, indent=2)
 
     print(f"\nTerminé. Résultats dans ./{OUTDIR}/ :")
-    for n in ("keywords.csv", "clusters.csv", "representative.csv", "labels.csv", "label_book.json"):
+    for n in ("keywords.csv", "clusters.csv", "representative.csv", "labels.csv",
+              "label_book.json", "classifications.csv"):
         print(f"   - {OUTDIR}/{n}")
     if cfg.label.grouping.method == "dendrogram":
         for ext in (".png", ".html"):

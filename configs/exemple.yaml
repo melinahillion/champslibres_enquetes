@@ -91,12 +91,14 @@ label:
 
 # --- Étape 06 : classification ----------------------------------------------
 classf:
-  mode:               "llm"   # "sans" (modalités existantes) | "llm" | "humain"
+  mode:               "llm"   # "sans" (depuis le clustering) | "llm" | "humain"
   model:              null    # modèle llm.lab
-  n_iterations:       3       # nb de passages -> vote majoritaire  (PARAMÉTRABLE)
-  temperature:        0.0
+  n_iterations:       3       # nb de passages -> vote majoritaire
+  temperature:        0.3     # > 0 pour que le vote majoritaire apporte qqch
+  batch_size:         20      # nb de réponses classées par appel LLM
   enforce_json_schema: true   # vLLM garantit le format JSON
   prompt_file:        null
+  human_column:       "code_humain"   # (mode "humain") colonne contenant les codes
   label_book:         null    # sinon, le Label_book.json du projet
 
 # --- Étape 07 : évaluation (CPU pur) ----------------------------------------

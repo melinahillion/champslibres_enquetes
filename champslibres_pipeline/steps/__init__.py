@@ -12,6 +12,7 @@ from . import step02_dedup
 from . import step03_embed
 from . import step04_cluster
 from . import step05_label
+from . import step06_classify
 
 __all__ = [
     "step01_gec",
@@ -19,4 +20,5 @@ __all__ = [
     "step03_embed",
     "step04_cluster",
     "step05_label",
+    "step06_classify",
 ]

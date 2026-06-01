@@ -147,8 +147,10 @@ class ClassfConfig(BaseModel):
     model: Optional[str] = None
     n_iterations: int = 3             # nb de passages -> vote majoritaire
     temperature: float = 0.0
+    batch_size: int = 20              # nb de réponses classées par appel LLM
     enforce_json_schema: bool = True
     prompt_file: Optional[str] = None
+    human_column: str = "code_humain" # (mode "humain") colonne contenant les codes
     label_book: Optional[str] = None
 
 
